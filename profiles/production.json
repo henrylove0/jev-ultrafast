@@ -1,0 +1,15 @@
+{
+  "name": "askexe-production",
+  "surfaces": {
+    "auth": "https://auth.askexe.com",
+    "crm": "https://crm.askexe.com",
+    "wiki": "https://wiki.askexe.com",
+    "erp": "https://erp.askexe.com",
+    "dashboard": "https://dashboard.askexe.com"
+  },
+  "erpTenantHost": "erp.askexe.com",
+  "credential": {
+    "service": "exe-e2e-credential",
+    "account": "e2e@askexe.com"
+  }
+}

@@ -10,7 +10,7 @@ from .questions import MAX_STEPS
 
 
 class Agent:
-    def __init__(self, url, goals, *, record_dir=None, screenshots=False):
+    def __init__(self, url, goals, *, record_dir=None, screenshots=False, redact_values=None):
         task = goals.strip() if isinstance(goals, str) else "\n".join(goals).strip()
         if not task:
             raise ValueError("Supply a task")
@@ -19,6 +19,7 @@ class Agent:
         self.browser = Browser(url)
         self.record_dir = Path(record_dir) if record_dir else None
         self.screenshots = screenshots or bool(record_dir)
+        self.redact_values = tuple(value for value in (redact_values or []) if value)
         try:
             page = self.browser.observe(screenshot=self.screenshots)
         except Exception:
@@ -74,7 +75,11 @@ class Agent:
                 raise ValueError("This run has stopped. Start a fresh demo.")
             if len(state["decisions"]) >= MAX_STEPS * 2:
                 raise ValueError("Reached the demo's model-call budget")
-            state["decision"] = choose(state["page"], state["goal"], state["history"])
+            state["decision"] = choose(
+                self._redact_page(state["page"]),
+                state["goal"],
+                self._redact_history(state["history"]),
+            )
             state["decisions"].append(
                 {
                     **state["decision"],
@@ -106,7 +111,12 @@ class Agent:
             if action["kind"] == "fill":
                 if not state["browser"].fresh(page):
                     raise StalePage("Page changed before text generation. Choose again.")
-                context = field_context(state["goal"], action, page, state["history"])
+                context = field_context(
+                    state["goal"],
+                    action,
+                    self._redact_page(page),
+                    self._redact_history(state["history"]),
+                )
                 if self.pending_text and self.pending_text[0] == context:
                     _, text, helper = self.pending_text
                 else:
@@ -166,6 +176,25 @@ class Agent:
 
     def close(self):
         self.browser.close()
+
+    def _redact(self, value):
+        if not isinstance(value, str):
+            return value
+        for secret in getattr(self, "redact_values", ()):
+            value = value.replace(secret, "<redacted>")
+        return value
+
+    def _redact_page(self, page):
+        clean = {**page}
+        for key in ("title", "text", "url"):
+            clean[key] = self._redact(clean.get(key))
+        clean["actions"] = [
+            {key: self._redact(value) for key, value in action.items()} for action in page.get("actions", [])
+        ]
+        return clean
+
+    def _redact_history(self, history):
+        return [{key: self._redact(value) for key, value in item.items()} for item in history]
 
     def __enter__(self):
         return self
