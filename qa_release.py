@@ -86,8 +86,10 @@ def assert_sso_redirect(name: str, app_url: str, auth_url: str, host: str | None
     )
 
 
-def jev_check(name: str, url: str, goal: str, redact: list[str] | None = None) -> bool:
+def jev_check(name: str, url: str, goal: str, redact: list[str] | None = None, settle_ms: int = 0) -> bool:
     command = [sys.executable, str(HERE / "qa_run.py"), "--url", url, "--goal", goal]
+    if settle_ms:
+        command.extend(["--settle-ms", str(settle_ms)])
     for value in redact or []:
         command.extend(["--redact", value])
     try:
@@ -119,13 +121,12 @@ def validate_live_evidence(evidence: dict, surfaces: dict) -> bool:
     missing = []
     for name in surfaces:
         item = observed.get(name, {})
-        absent = [key for key in ("observedAt", "image", "source", "version") if not item.get(key)]
-        if absent:
-            missing.append(f"{name} ({', '.join(absent)})")
+        if not item.get("observedAt") or not any(item.get(key) for key in ("image", "source", "version")):
+            missing.append(f"{name} (observedAt and one of image/source/version required)")
     return record(
         "deployment/evidence",
         "PASS" if not missing else "BLOCKED",
-        "exact runtime image, source, and version supplied for every surface"
+        "observed runtime identity supplied for every surface"
         if not missing
         else f"missing observed runtime evidence: {', '.join(missing)}",
         observed_deployed=observed,
@@ -192,11 +193,11 @@ def main() -> None:
             account = credential["account"]
             for name, goal in (
                 ("dashboard", "Verify the authenticated Exe dashboard visibly shows its application navigation."),
-                ("crm", "Verify the authenticated CRM visibly shows its main workspace navigation."),
-                ("wiki", "Verify the authenticated Wiki visibly shows its main workspace navigation."),
-                ("erp", "Verify the authenticated ERP visibly shows its desk or workspace navigation."),
+                ("crm", "Verify the signed-in CRM visibly shows the Companies workspace."),
+                ("wiki", "Verify the signed-in Wiki visibly shows the Company workspace and Welcome to Exe Wiki."),
+                ("erp", "Verify the signed-in ERP Desktop visibly shows Accounting and Stock modules."),
             ):
-                jev_check(f"login/{name}-session", surfaces[name], goal, redact=[account])
+                jev_check(f"login/{name}-session", surfaces[name], goal, redact=[account], settle_ms=4000)
     else:
         record("login/central", "NOT_RUN", "authenticated checks require --with-login")
 

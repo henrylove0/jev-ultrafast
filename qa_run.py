@@ -64,6 +64,9 @@ def main() -> None:
     ap.add_argument("--goal", required=True, action="append", help="QA assertion; repeat for an ordered list")
     ap.add_argument("--timeout", type=int, default=180)
     ap.add_argument(
+        "--settle-ms", type=int, default=0, help="wait for client-side app rendering before first assertion"
+    )
+    ap.add_argument(
         "--redact",
         action="append",
         default=[],
@@ -76,15 +79,16 @@ def main() -> None:
     os.environ["BU_CDP_WS"] = ensure_chrome()
 
     from jev_ultrafast import Agent
+    from jev_ultrafast.agent import sanitize_url
 
     started = time.perf_counter()
-    with Agent(a.url, a.goal, redact_values=a.redact) as agent:
+    with Agent(a.url, a.goal, redact_values=a.redact, initial_wait_ms=a.settle_ms) as agent:
         last = None
         for state in agent.run():
             last = state
             print(f"{state['elapsed_ms']:>6} ms  {len(state['history'])} actions  {state['status']}")
         verdict = last["status"]
-        final_url = last["page"]["url"]
+        final_url = sanitize_url(last["page"]["url"])
         n_actions = len(last["history"])
 
     print(
